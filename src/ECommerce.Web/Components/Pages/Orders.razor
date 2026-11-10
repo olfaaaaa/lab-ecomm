@@ -34,6 +34,13 @@ else
                         <li>@item.Quantity × @item.ProductName @@ @item.UnitPrice.ToString("C")</li>
                     }
                 </ul>
+                @if (!string.IsNullOrEmpty(order.PromoCode))
+                {
+                    <p class="mb-1">
+                        Subtotal: @order.Subtotal.ToString("C")<br />
+                        Promo @order.PromoCode (-@order.DiscountPercent%): -@order.Discount.ToString("C")
+                    </p>
+                }
                 <strong>Total: @order.Total.ToString("C")</strong>
             </div>
         </div>
