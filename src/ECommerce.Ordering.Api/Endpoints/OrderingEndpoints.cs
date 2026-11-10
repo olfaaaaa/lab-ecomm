@@ -27,9 +27,20 @@ public static class OrderingEndpoints
             CatalogServiceClient catalog,
             CancellationToken ct) =>
         {
-            if (request.Items.Count == 0)
+            if (string.IsNullOrWhiteSpace(request.Customer))
+            {
+                return Results.BadRequest("Customer name is required.");
+            }
+
+            if (request.Items is null || request.Items.Count == 0)
             {
                 return Results.BadRequest("An order must contain at least one item.");
+            }
+
+            var invalidLine = request.Items.FirstOrDefault(i => i.Quantity <= 0);
+            if (invalidLine is not null)
+            {
+                return Results.BadRequest($"Quantity for product {invalidLine.ProductId} must be greater than zero.");
             }
 
             var order = new Order
@@ -38,6 +49,20 @@ public static class OrderingEndpoints
                 CreatedAt = DateTimeOffset.UtcNow,
                 Status = OrderStatus.Pending
             };
+
+            if (!string.IsNullOrWhiteSpace(request.PromoCode))
+            {
+                var code = PromoCode.Normalize(request.PromoCode);
+                var promo = await db.PromoCodes.AsNoTracking().FirstOrDefaultAsync(p => p.Code == code, ct);
+                if (promo is null || !promo.IsUsableAt(order.CreatedAt))
+                {
+                    return Results.BadRequest($"Promo code '{code}' is invalid or expired.");
+                }
+
+                // Snapshot the percentage so later changes to the code don't alter past orders.
+                order.PromoCode = promo.Code;
+                order.DiscountPercent = promo.PercentOff;
+            }
 
             // Validate each product against the Catalog service (sync HTTP call).
             foreach (var item in request.Items)
@@ -69,5 +94,5 @@ public static class OrderingEndpoints
     }
 }
 
-public record CreateOrderRequest(string Customer, List<OrderLine> Items);
+public record CreateOrderRequest(string Customer, List<OrderLine> Items, string? PromoCode = null);
 public record OrderLine(int ProductId, int Quantity);

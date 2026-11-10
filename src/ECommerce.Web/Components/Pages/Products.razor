@@ -54,6 +54,40 @@ else
             }
         </ul>
 
+        <div class="mb-3">
+            <label class="form-label">Promo code</label>
+            <div class="input-group" style="max-width: 320px">
+                <input class="form-control" placeholder="e.g. WELCOME10" @bind="_promoInput" disabled="@(_promo is not null)" />
+                @if (_promo is null)
+                {
+                    <button class="btn btn-outline-secondary" @onclick="ApplyPromo" disabled="@_checkingPromo">Apply</button>
+                }
+                else
+                {
+                    <button class="btn btn-outline-danger" @onclick="RemovePromo">Remove</button>
+                }
+            </div>
+            @if (_promo is not null)
+            {
+                <div class="text-success mt-1">Code @_promo.Code applied: -@_promo.PercentOff%</div>
+            }
+            else if (!string.IsNullOrEmpty(_promoError))
+            {
+                <div class="text-danger mt-1">@_promoError</div>
+            }
+        </div>
+
+        <p>
+            Subtotal: @Subtotal.ToString("C")
+            @if (_promo is not null)
+            {
+                <br />
+                <span>Discount (@_promo.PercentOff%): -@Discount.ToString("C")</span>
+            }
+            <br />
+            <strong>Total: @Total.ToString("C")</strong>
+        </p>
+
         <div class="mb-2">
             <label class="form-label">Customer name</label>
             <input class="form-control" style="max-width: 320px" @bind="_customer" />
@@ -74,10 +108,55 @@ else
     private bool _placing;
     private string? _message;
     private bool _isError;
+    private string _promoInput = "";
+    private PromoCodeDto? _promo;
+    private string? _promoError;
+    private bool _checkingPromo;
+
+    private decimal Subtotal => _cart.Sum(c => c.Key.Price * c.Value);
+    private decimal Discount => _promo is null
+        ? 0m
+        : Math.Round(Subtotal * _promo.PercentOff / 100m, 2, MidpointRounding.AwayFromZero);
+    private decimal Total => Subtotal - Discount;
 
     protected override async Task OnInitializedAsync()
     {
         _products = await Catalog.GetProductsAsync();
+    }
+
+    private async Task ApplyPromo()
+    {
+        _promoError = null;
+        if (string.IsNullOrWhiteSpace(_promoInput))
+        {
+            _promoError = "Enter a promo code.";
+            return;
+        }
+
+        _checkingPromo = true;
+        try
+        {
+            _promo = await Ordering.GetPromoCodeAsync(_promoInput);
+            if (_promo is null)
+            {
+                _promoError = "This promo code is invalid or expired.";
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _promoError = "Could not check the promo code. Please try again.";
+        }
+        finally
+        {
+            _checkingPromo = false;
+        }
+    }
+
+    private void RemovePromo()
+    {
+        _promo = null;
+        _promoInput = "";
+        _promoError = null;
     }
 
     private void AddToCart(ProductDto product)
@@ -98,7 +177,8 @@ else
         _placing = true;
         var order = new CreateOrderDto(
             _customer,
-            _cart.Select(c => new OrderLineDto(c.Key.Id, c.Value)).ToList());
+            _cart.Select(c => new OrderLineDto(c.Key.Id, c.Value)).ToList(),
+            _promo?.Code);
 
         var (success, error) = await Ordering.CreateOrderAsync(order);
         _placing = false;
@@ -109,6 +189,7 @@ else
             _isError = false;
             _cart.Clear();
             _customer = "";
+            RemovePromo();
         }
         else
         {

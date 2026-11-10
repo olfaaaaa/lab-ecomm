@@ -32,6 +32,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapOrderingEndpoints();
+app.MapPromoCodeEndpoints();
 
 using (var scope = app.Services.CreateScope())
 {
