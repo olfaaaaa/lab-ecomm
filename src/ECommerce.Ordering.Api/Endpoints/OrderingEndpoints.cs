@@ -27,9 +27,20 @@ public static class OrderingEndpoints
             CatalogServiceClient catalog,
             CancellationToken ct) =>
         {
-            if (request.Items.Count == 0)
+            if (string.IsNullOrWhiteSpace(request.Customer))
+            {
+                return Results.BadRequest("Customer name is required.");
+            }
+
+            if (request.Items is null || request.Items.Count == 0)
             {
                 return Results.BadRequest("An order must contain at least one item.");
+            }
+
+            var invalidLine = request.Items.FirstOrDefault(i => i.Quantity <= 0);
+            if (invalidLine is not null)
+            {
+                return Results.BadRequest($"Quantity for product {invalidLine.ProductId} must be greater than zero.");
             }
 
             var order = new Order
